@@ -1,8 +1,15 @@
-FROM golang:1.12 AS build
-ADD cmd/grpc-db-client/ /go/src/github.com/DataDog/trace-examples/go/grpc/grpc-db/cmd/grpc-db-client/
-ADD proto/ /go/src/github.com/DataDog/trace-examples/go/grpc/grpc-db/proto/
-RUN go get -d github.com/DataDog/trace-examples/go/grpc/grpc-db/cmd/grpc-db-client && go install github.com/DataDog/trace-examples/go/grpc/grpc-db/cmd/grpc-db-client
+# syntax=docker.io/docker/dockerfile-upstream:1-labs
+
+FROM golang:1.21 AS build
+WORKDIR /go/src/github.com/DataDog/trace-examples/go/grpc/grpc-db
+COPY --link go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
+	go mod download -x
+COPY --link ./proto/crud ./proto/crud
+COPY --link cmd/grpc-db-client/ cmd/grpc-db-client/
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
+  CGO_ENABLED=0 go install -v -x -tags='osusergo,netgo,static' ./cmd/grpc-db-client
 
 FROM debian:stretch-slim
 COPY --from=build /go/bin/grpc-db-client /grpc-db-client 
-ENTRYPOINT ["/grpc-db-client"]
+CMD ["/grpc-db-client"]

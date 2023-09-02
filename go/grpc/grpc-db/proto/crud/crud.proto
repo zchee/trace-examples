@@ -2,6 +2,8 @@ syntax = "proto3";
 
 package crud;
 
+option go_package='github.com/DataDog/trace-examples/go/grpc/grpc-db/proto/crud';
+
 // The CRUD service definition.
 service CRUD {
   rpc Create (CreateRequest) returns (CreateResponse) {}

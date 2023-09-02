@@ -1,8 +1,15 @@
-FROM golang:1.12 AS build
-ADD cmd/grpc-gorm-server/ /go/src/github.com/DataDog/trace-examples/go/grpc/grpc-db/cmd/grpc-gorm-server/
-ADD proto/ /go/src/github.com/DataDog/trace-examples/go/grpc/grpc-db/proto/
-RUN go get -d github.com/DataDog/trace-examples/go/grpc/grpc-db/cmd/grpc-gorm-server && go install github.com/DataDog/trace-examples/go/grpc/grpc-db/cmd/grpc-gorm-server
+# syntax=docker.io/docker/dockerfile-upstream:1-labs
+
+FROM golang:1.21 AS build
+WORKDIR /go/src/github.com/DataDog/trace-examples/go/grpc/grpc-db
+COPY --link go.mod go.sum ./
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
+	go mod download -x
+COPY --link ./proto/crud ./proto/crud
+COPY --link cmd/grpc-gorm-server cmd/grpc-gorm-server
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
+  CGO_ENABLED=0 go install -v -x -tags='osusergo,netgo,static' ./cmd/grpc-gorm-server
 
 FROM debian:stretch-slim
 COPY --from=build /go/bin/grpc-gorm-server /grpc-gorm-server 
-ENTRYPOINT ["/grpc-gorm-server"]
+CMD ["/grpc-gorm-server"]

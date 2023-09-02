@@ -1,55 +1,96 @@
-version: "3.2"
 services:
   datadog-agent:
-    environment:
-      - DD_API_KEY
-      - DD_APM_ENABLED=true
-    image: 'datadog/agent'
+    container_name: datadog-agent
+    env_file: .env
+    image: 'gcr.io/datadoghq/agent:latest'
     volumes:
-      - '/var/run/docker.sock:/var/run/docker.sock:ro'
-      - '/proc/:/host/proc/:ro'
-      - '/sys/fs/cgroup/:/host/sys/fs/cgroup:ro'
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    expose:
+      - "8126"
+    networks:
+      - grpc-db
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8126/info"]
+      interval: 5s
+      timeout: 10s
+      retries: 50
 
   postgres:
+    container_name: postgres
     image: postgres:11
     environment:
       - POSTGRES_USER=postgres 
       - POSTGRES_PASSWORD=postgres 
       - POSTGRES_DB=postgres 
+    expose:
+      - "5432"
+    networks:
+      - grpc-db
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   grpc-db-client:
+    container_name: grpc-db-client
     build:
       context: .
       dockerfile: docker/Dockerfile.grpc-db-client
     depends_on:
-      - datadog-agent
-      - grpc-dbsql-server
-      - grpc-gorm-server
+      datadog-agent:
+        condition: service_healthy
+      grpc-dbsql-server:
+        condition: service_started
+      # grpc-gorm-server:
+      #   condition: service_started
     environment:
+      - DD_ENV=local
       - DD_AGENT_HOST=datadog-agent
-    # Test against database/sql grpc server
-    command: [ "-address", "grpc-dbsql-server:12345" ]
-    # Test against gorm grpc server 
-    # command: [ "-address", "grpc-gorm-server:12345" ]
+      - DD_TRACE_AGENT_PORT=8126
+    entrypoint:
+      - /grpc-db-client
+      - -address
+      - grpc-dbsql-server:12345 # grpc-gorm-server:12345
+    networks: 
+      - grpc-db
 
   grpc-dbsql-server:
+    container_name: grpc-dbsql-server
     build:
       context: .
       dockerfile: docker/Dockerfile.grpc-dbsql-server
     depends_on:
-      - datadog-agent
-      - postgres
+      datadog-agent:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
     environment:
+      - DD_ENV=local
       - DD_AGENT_HOST=datadog-agent
+      - DD_TRACE_AGENT_PORT=8126
       - POSTGRES_HOST=postgres
+    expose:
+      - "12345"
+    networks:
+      - grpc-db
 
-  grpc-gorm-server:
-    build:
-      context: .
-      dockerfile: docker/Dockerfile.grpc-gorm-server
-    depends_on:
-      - datadog-agent
-      - postgres
-    environment:
-      - DD_AGENT_HOST=datadog-agent
-      - POSTGRES_HOST=postgres
+  # grpc-gorm-server:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/Dockerfile.grpc-gorm-server
+  #   depends_on:
+  #     - datadog-agent
+  #     - postgres
+  #   environment:
+  #     - DD_ENV=local
+  #     - DD_AGENT_HOST=datadog-agent
+  #     - DD_TRACE_AGENT_PORT=8126
+  #     - POSTGRES_HOST=postgres
+  #   ports:
+  #     - 12345:12345
+  #   networks:
+  #     - grpc-db
+
+networks:
+  grpc-db:

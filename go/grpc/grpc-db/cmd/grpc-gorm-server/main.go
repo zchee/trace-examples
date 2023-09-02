@@ -6,16 +6,15 @@ import (
 	"net"
 	"os"
 
-	"github.com/DataDog/trace-examples/go/grpc/grpc-db/proto/crud"
-
 	"github.com/jinzhu/gorm"
 	"github.com/lib/pq"
 	"google.golang.org/grpc"
-
 	sqltrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/database/sql"
 	grpctrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/google.golang.org/grpc"
 	gormtrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/jinzhu/gorm"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
+
+	"github.com/DataDog/trace-examples/go/grpc/grpc-db/proto/crud"
 )
 
 type Thing struct {
@@ -46,9 +45,13 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
-	si := grpctrace.StreamServerInterceptor(grpctrace.WithServiceName("traced-example-server"))
-	ui := grpctrace.UnaryServerInterceptor(grpctrace.WithServiceName("traced-example-server"))
-	s := grpc.NewServer(grpc.StreamInterceptor(si), grpc.UnaryInterceptor(ui))
+	ui := grpctrace.UnaryServerInterceptor(grpctrace.WithServiceName("x-traced-example-server"))
+	si := grpctrace.StreamServerInterceptor(grpctrace.WithServiceName("x-traced-example-server"))
+	opts := []grpc.ServerOption{
+		grpc.UnaryInterceptor(ui),
+		grpc.StreamInterceptor(si),
+	}
+	s := grpc.NewServer(opts...)
 
 	crud.RegisterCRUDServer(s, crudServer{db: db})
 	log.Printf("serving on %s\n", lis.Addr())
@@ -58,6 +61,8 @@ func main() {
 }
 
 type crudServer struct {
+	crud.CRUDServer
+
 	db *gorm.DB
 }
 

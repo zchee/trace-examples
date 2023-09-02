@@ -7,18 +7,17 @@ import (
 	"net"
 	"os"
 
-	"github.com/DataDog/trace-examples/go/grpc/grpc-db/proto/crud"
-
 	"github.com/lib/pq"
 	"google.golang.org/grpc"
-
 	sqltrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/database/sql"
 	grpctrace "gopkg.in/DataDog/dd-trace-go.v1/contrib/google.golang.org/grpc"
 	"gopkg.in/DataDog/dd-trace-go.v1/ddtrace/tracer"
+
+	"github.com/DataDog/trace-examples/go/grpc/grpc-db/proto/crud"
 )
 
 func main() {
-	tracer.Start()
+	tracer.Start(tracer.WithDebugMode(true))
 	defer tracer.Stop()
 
 	postgresHost := getEnvWithDefault("POSTGRES_HOST", "localhost")
@@ -42,11 +41,14 @@ func main() {
 		log.Fatalf("failed to listen: %v", err)
 	}
 
-	si := grpctrace.StreamServerInterceptor(grpctrace.WithServiceName("grpc-dbsql-server"))
-	ui := grpctrace.UnaryServerInterceptor(grpctrace.WithServiceName("grpc-dbsql-server"))
-	s := grpc.NewServer(grpc.StreamInterceptor(si), grpc.UnaryInterceptor(ui))
+	ui := grpctrace.UnaryServerInterceptor(grpctrace.WithServiceName("x-grpc-dbsql-server"))
+	si := grpctrace.StreamServerInterceptor(grpctrace.WithServiceName("x-grpc-dbsql-server"))
+	s := grpc.NewServer(
+		grpc.UnaryInterceptor(ui),
+		grpc.StreamInterceptor(si),
+	)
 
-	crud.RegisterCRUDServer(s, crudServer{db: db})
+	crud.RegisterCRUDServer(s, &crudServer{db: db})
 	log.Printf("serving on %s\n", lis.Addr())
 	if err := s.Serve(lis); err != nil {
 		log.Fatalf("failed to serve: %v", err)
@@ -54,6 +56,8 @@ func main() {
 }
 
 type crudServer struct {
+	crud.CRUDServer
+
 	db *sql.DB
 }
 
